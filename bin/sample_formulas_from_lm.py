@@ -2,6 +2,9 @@ import kenlm
 import numpy as np
 from pymatgen import Composition, Element
 from pymatgen.core.composition import CompositionError
+from smact.screening import pauling_test
+from smact import Element as smact_element
+import itertools
 import csv
 import warnings
 
@@ -54,21 +57,37 @@ def sample(lm, vocab, n):
     return " ".join(ctx[:-1])
 
 
-if __name__ == '__main__':
-    n = 10
-    lm = kenlm.Model("../out/all_formulas_corpus_n20.klm")
+def to_smact_elem(pymatgen_elem):
+    try:
+        return smact_element(pymatgen_elem.name)
+    except NameError as err:
+        print(err)
 
-    vocab = get_arpa_vocab("../out/all_formulas_corpus_n20.arpa")
+
+if __name__ == '__main__':
+    n = 20
+    klm_file = "../out/all_formulas_corpus_n20.klm"
+    arpa_file = "../out/all_formulas_corpus_n20.arpa"
+    all_formulas_file = "../data/all_formulas.csv"
+    n_generated = 1000
+    n_invalid = 0
+    n_existing = 0
+    n_charge_neutral_checkable = 0
+    n_charge_neutral = 0
+
+    lm = kenlm.Model(klm_file)
+
+    vocab = get_arpa_vocab(arpa_file)
     vocab.remove("<s>")
 
     all_formulas = set()
-    with open("../out/all_formulas.csv", "rt") as f:
+    with open(all_formulas_file, "rt") as f:
         reader = csv.reader(f)
         for line in reader:
             all_formulas.add(line[1])
 
     samples = []
-    for i in range(100):
+    for i in range(n_generated):
         s = sample(lm, vocab, n)
         formula = s.replace(" ", "")
         if not formula:
@@ -78,14 +97,50 @@ if __name__ == '__main__':
             comp = Composition(formula)
         except CompositionError:
             print("invalid formula: %s" % formula)
+            n_invalid += 1
             continue
-        score = lm.score(s, bos=False, eos=False)
+
         reduced_formula = comp.reduced_formula
+        print("valid formula: %s" % reduced_formula)
+
+        # check if passes SMACT filter
+        smact_elements = [to_smact_elem(e) for e in comp.elements]
+        if not any([None in smact_elements]):
+            n_charge_neutral_checkable += 1
+            ox_combos = [e.oxidation_states for e in smact_elements]
+            # multiply the charges by the number of atoms in the reduced formula
+            ox_combos = [tuple([comp.to_reduced_dict[comp.elements[i].name]*o for o in oc]) for i, oc in enumerate(ox_combos)]
+            electronegs = [e.pauling_eneg for e in smact_elements]
+            n_neutral = 0
+            for ox_states in itertools.product(*ox_combos):
+                if sum(ox_states) == 0:
+                    n_neutral += 1
+                    n_charge_neutral += 1
+                    # electroneg_ok = pauling_test(ox_states, electronegs)
+                    # if electroneg_ok:
+                    #     print("electroneg OK!")
+                    break
+            print("is neutral: %s" % (n_neutral > 0 or len(smact_elements) == 1))
+        else:
+            print("could not check charge neutrality")
+
+        score = lm.score(s, bos=False, eos=False)
+        print("score: %s" % score)
         if reduced_formula in all_formulas:
-            print("EXISTS: %s" % reduced_formula)
+            print("EXISTS")
+            n_existing += 1
         samples.append((reduced_formula, score))
+
+        print(". . . . .")
 
     samples = sorted(samples, key=lambda v: v[1])
 
     for sample in samples:
         print(sample)
+
+    print("- - - - ")
+    print("num valid: %s / %s (%s %%)" %
+          (n_generated - n_invalid, n_generated, ((n_generated - n_invalid)/n_generated)*100.0))
+    print("num existing: %s / %s (%s %%)" % (n_existing, n_generated, (n_existing/n_generated)*100.0))
+    print("num charge neutral: %s / %s (%s %%)" %
+          (n_charge_neutral, n_charge_neutral_checkable, (n_charge_neutral/n_charge_neutral_checkable)*100.0))

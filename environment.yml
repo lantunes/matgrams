@@ -11,3 +11,4 @@ dependencies:
   - pip
   - pip:
       - "https://github.com/kpu/kenlm/archive/master.zip --install-option='--max_order=100'"
+      - smact
