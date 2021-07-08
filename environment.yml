@@ -1,0 +1,13 @@
+name: matgrams_env
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.6
+  - pymatgen
+  - matplotlib
+  - numpy
+  - pip
+  - pip:
+      - "https://github.com/kpu/kenlm/archive/master.zip --install-option='--max_order=100'"
