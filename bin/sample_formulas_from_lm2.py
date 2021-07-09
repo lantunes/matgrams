@@ -42,7 +42,7 @@ def get_arpa_vocab(arpa_file_path, exclude_unk=True):
     return tokens
 
 
-def sample(lm, vocab, n, num_element_types):
+def sample(lm, vocab, n, num_element_types, force):
     ctx = [np.random.choice([e.symbol for e in Element])]
 
     for _ in range(num_element_types - 1):
@@ -54,6 +54,10 @@ def sample(lm, vocab, n, num_element_types):
             scores.append(score)
 
         c = np.random.choice(vocab, p=normalize(scores))
+
+        if c == "</s>" and force:
+            continue
+
         ctx.append(c)
 
     if "</s>" in ctx:
@@ -71,6 +75,7 @@ def to_smact_elem(pymatgen_elem):
 if __name__ == '__main__':
     n = 2
     num_element_types = 4  # at most quaternary compounds should be generated
+    force = True  # if True, the number of element types must be exact
     n_generated = 1000
     klm_file = "../out/all_formulas_corpus2_n2.klm"
     arpa_file = "../out/all_formulas_corpus2_n2.arpa"
@@ -93,7 +98,7 @@ if __name__ == '__main__':
 
     samples = []
     for i in range(n_generated):
-        s = sample(lm, vocab, n, num_element_types)
+        s = sample(lm, vocab, n, num_element_types, force)
         formula = s.replace(" ", "")
         if not formula:
             print("empty formula: %s" % formula)
@@ -140,7 +145,9 @@ if __name__ == '__main__':
 
     samples = sorted(samples, key=lambda v: v[1])
 
+    distinct_samples = set()
     for sample in samples:
+        distinct_samples.add(sample[0])
         print(sample)
 
     print("- - - - ")
@@ -149,3 +156,4 @@ if __name__ == '__main__':
     print("num existing: %s / %s (%s %%)" % (n_existing, n_generated, (n_existing/n_generated)*100.0))
     print("num charge neutral: %s / %s (%s %%)" %
           (n_charge_neutral, n_charge_neutral_checkable, (n_charge_neutral/n_charge_neutral_checkable)*100.0))
+    print("num unique: %s / %s (%s %%)" % (len(distinct_samples), len(samples), (len(distinct_samples)/len(samples))*100.0))
