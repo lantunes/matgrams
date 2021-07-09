@@ -44,17 +44,20 @@ def get_arpa_vocab(arpa_file_path, exclude_unk=True):
 
 def sample(lm, vocab, n, num_element_types):
     ctx = [np.random.choice([e.symbol for e in Element])]
+    n_element_types = 1
 
-    for _ in range(num_element_types - 1):
-        if ctx[-1] == "</s>":
-            break
+    while not ctx or ctx[-1] != "</s>":
         scores = []
         for v in vocab:
             score = 10 ** get_score(lm, v, " ".join(ctx[-n:]))
             scores.append(score)
 
         c = np.random.choice(vocab, p=normalize(scores))
+        if not c.isdigit():
+            n_element_types += 1
         ctx.append(c)
+        if n_element_types == num_element_types and c.isdigit():
+            break
 
     if "</s>" in ctx:
         ctx.remove("</s>")
@@ -69,11 +72,11 @@ def to_smact_elem(pymatgen_elem):
 
 
 if __name__ == '__main__':
-    n = 2
+    n = 6
     num_element_types = 4  # at most quaternary compounds should be generated
     n_generated = 1000
-    klm_file = "../out/all_formulas_corpus2_n2.klm"
-    arpa_file = "../out/all_formulas_corpus2_n2.arpa"
+    klm_file = "../out/all_formulas_corpus3_n6.klm"
+    arpa_file = "../out/all_formulas_corpus3_n6.arpa"
     all_formulas_file = "../data/all_formulas.csv"
     n_invalid = 0
     n_existing = 0
